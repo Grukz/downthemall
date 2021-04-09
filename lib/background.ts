@@ -27,6 +27,7 @@ import {
 } from "./browser";
 import { Bus } from "./bus";
 import { filterInSitu } from "./util";
+import { DB } from "./db";
 
 
 const menus = typeof (_menus) !== "undefined" && _menus || _cmenus;
@@ -106,19 +107,19 @@ class Handler {
 
   async performSelection(options: SelectionOptions) {
     try {
-      const toptions: any = {
+      const tabOptions: any = {
         currentWindow: true,
         discarded: false,
       };
       if (!CHROME) {
-        toptions.hidden = false;
+        tabOptions.hidden = false;
       }
       const selectedTabs = options.allTabs ?
-        await tabs.query(toptions) as any[] :
+        await tabs.query(tabOptions) as any[] :
         [options.tab];
 
       const textLinks = await Prefs.get("text-links", true);
-      const goptions = {
+      const gatherOptions = {
         type: "DTA:gather",
         selectionOnly: options.selectionOnly,
         textLinks,
@@ -127,7 +128,7 @@ class Handler {
       };
 
       const results = await Promise.all(selectedTabs.
-        map((tab: any) => runContentJob(tab, GATHER, goptions)));
+        map((tab: any) => runContentJob(tab, GATHER, gatherOptions)));
 
       await this.processResults(options.turbo, results.flat());
     }
@@ -170,7 +171,7 @@ locale.then(() => {
       super();
       this.onClicked = this.onClicked.bind(this);
       const alls = new Map<string, string[]>();
-      const mcreate = (options: any) => {
+      const menuCreate = (options: any) => {
         if (CHROME) {
           delete options.icons;
           options.contexts = options.contexts.
@@ -184,7 +185,7 @@ locale.then(() => {
         }
         menus.create(options);
       };
-      mcreate({
+      menuCreate({
         id: "DTARegularLink",
         contexts: ["link"],
         icons: {
@@ -193,7 +194,7 @@ locale.then(() => {
         },
         title: _("dta.regular.link"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurboLink",
         contexts: ["link"],
         icons: {
@@ -202,7 +203,7 @@ locale.then(() => {
         },
         title: _("dta.turbo.link"),
       });
-      mcreate({
+      menuCreate({
         id: "DTARegularImage",
         contexts: ["image"],
         icons: {
@@ -211,7 +212,7 @@ locale.then(() => {
         },
         title: _("dta.regular.image"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurboImage",
         contexts: ["image"],
         icons: {
@@ -220,7 +221,7 @@ locale.then(() => {
         },
         title: _("dta.turbo.image"),
       });
-      mcreate({
+      menuCreate({
         id: "DTARegularMedia",
         contexts: ["video", "audio"],
         icons: {
@@ -229,7 +230,7 @@ locale.then(() => {
         },
         title: _("dta.regular.media"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurboMedia",
         contexts: ["video", "audio"],
         icons: {
@@ -238,7 +239,7 @@ locale.then(() => {
         },
         title: _("dta.turbo.media"),
       });
-      mcreate({
+      menuCreate({
         id: "DTARegularSelection",
         contexts: ["selection"],
         icons: {
@@ -247,7 +248,7 @@ locale.then(() => {
         },
         title: _("dta.regular.selection"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurboSelection",
         contexts: ["selection"],
         icons: {
@@ -256,7 +257,7 @@ locale.then(() => {
         },
         title: _("dta.turbo.selection"),
       });
-      mcreate({
+      menuCreate({
         id: "DTARegular",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -265,7 +266,7 @@ locale.then(() => {
         },
         title: _("dta.regular"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurbo",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -274,12 +275,12 @@ locale.then(() => {
         },
         title: _("dta.turbo"),
       });
-      mcreate({
+      menuCreate({
         id: "sep-1",
         contexts: ["all", "browser_action", "tools_menu"],
         type: "separator"
       });
-      mcreate({
+      menuCreate({
         id: "DTARegularAll",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -288,7 +289,7 @@ locale.then(() => {
         },
         title: _("dta-regular-all"),
       });
-      mcreate({
+      menuCreate({
         id: "DTATurboAll",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -300,12 +301,12 @@ locale.then(() => {
       const sep2ctx = menus.ACTION_MENU_TOP_LEVEL_LIMIT === 6 ?
         ["all", "tools_menu"] :
         ["all", "browser_action", "tools_menu"];
-      mcreate({
+      menuCreate({
         id: "sep-2",
         contexts: sep2ctx,
         type: "separator"
       });
-      mcreate({
+      menuCreate({
         id: "DTAAdd",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -316,12 +317,12 @@ locale.then(() => {
         },
         title: _("add-download"),
       });
-      mcreate({
+      menuCreate({
         id: "sep-3",
         contexts: ["all", "browser_action", "tools_menu"],
         type: "separator"
       });
-      mcreate({
+      menuCreate({
         id: "DTAManager",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -330,7 +331,7 @@ locale.then(() => {
         },
         title: _("manager.short"),
       });
-      mcreate({
+      menuCreate({
         id: "DTAPrefs",
         contexts: ["all", "browser_action", "tools_menu"],
         icons: {
@@ -660,6 +661,13 @@ locale.then(() => {
       };
       sessions.onChanged.addListener(sessionRemover);
       await sessionRemover();
+    }
+
+    try {
+      await DB.init();
+    }
+    catch (ex) {
+      console.error("db init", ex.toString(), ex.message, ex.stack, ex);
     }
 
     await Prefs.set("last-run", new Date());

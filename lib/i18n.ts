@@ -4,7 +4,7 @@
 import {memoize} from "./memoize";
 import langs from "../_locales/all.json";
 import { sorted, naturalCaseCompare } from "./sorting";
-
+import lf from "localforage";
 
 export const ALL_LANGS = Object.freeze(new Map<string, string>(
   sorted(Object.entries(langs), e => {
@@ -40,11 +40,11 @@ class Entry {
     this.message = entry.message.replace(/\$[A-Z0-9]+\$/g, (r: string) => {
       hit = true;
       const id = r.substr(1, r.length - 2).toLocaleLowerCase();
-      const pholder = entry.placeholders[id];
-      if (!pholder || !pholder.content) {
+      const placeholder = entry.placeholders[id];
+      if (!placeholder || !placeholder.content) {
         throw new Error(`Invalid placeholder: ${id}`);
       }
-      return `${pholder.content}$`;
+      return `${placeholder.content}$`;
     });
     if (!hit) {
       throw new Error("Not entry-able");
@@ -123,14 +123,17 @@ async function fetchLanguage(code: string) {
 }
 
 
-function loadCached() {
-  if (document.location.pathname.includes("/windows/")) {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      return JSON.parse(cached) as any[];
-    }
+async function loadCached(): Promise<any> {
+  const cached = await lf.getItem<string>(CACHE_KEY);
+  if (!cached) {
+    return null;
   }
-  return null;
+  const parsed = JSON.parse(cached);
+  if (!Array.isArray(parsed) || !parsed[0].CRASH || !parsed[0].CRASH.message) {
+    console.warn("rejecting cached locales", parsed);
+    return null;
+  }
+  return parsed;
 }
 
 async function loadRawLocales() {
@@ -187,16 +190,16 @@ async function load(): Promise<Localization> {
       }
       CURRENT = currentLang;
       // en is the base locale
-      let valid = loadCached();
+      let valid = await loadCached();
       if (!valid) {
         valid = await loadRawLocales();
-        localStorage.setItem(CACHE_KEY, JSON.stringify(valid));
+        await lf.setItem(CACHE_KEY, JSON.stringify(valid));
       }
       if (!valid.length) {
-        throw new Error("Could not lood ANY of these locales");
+        throw new Error("Could not load ANY of these locales");
       }
 
-      const custom = localStorage.getItem(CUSTOM_KEY);
+      const custom = await lf.getItem<string>(CUSTOM_KEY);
       if (custom) {
         try {
           valid.push(JSON.parse(custom));
@@ -239,7 +242,7 @@ locale.then(l => {
 /**
  * Localize a message
  * @param {string} id Identifier of the string to localize
- * @param {string[]} [subst] Message substituations
+ * @param {string[]} [subst] Message substitutions
  * @returns {string} Localized message
  */
 export function _(id: string, ...subst: any[]) {
@@ -302,11 +305,11 @@ export async function localize<T extends HTMLElement | DocumentFragment>(
   return localize_(elem);
 }
 
-export function saveCustomLocale(data?: string) {
+export async function saveCustomLocale(data?: string) {
   if (!data) {
-    localStorage.removeItem(CUSTOM_KEY);
+    await lf.removeItem(CUSTOM_KEY);
     return;
   }
   new Localization(JSON.parse(data));
-  localStorage.setItem(CUSTOM_KEY, data);
+  await localStorage.setItem(CUSTOM_KEY, data);
 }
